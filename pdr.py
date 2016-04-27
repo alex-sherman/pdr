@@ -2,22 +2,26 @@ from z3 import *
 
 class Cube(object):
     def __init__(self, model, variable_lookup, i = None):
-        self.cube = And(*[variable_lookup[str(v)] == model[v] for v in model])
+        self.values = [variable_lookup[str(v)] == model[v] for v in model]
         self.i = i
+
+    @property
+    def cube(self):
+        return And(*self.values)
+
+    @property
+    def not_cube(self):
+        return Or(*[Not(value) for value in self.values])
+
     def __repr__(self):
         return "{" + ("" if self.i == None else str(self.i) + ": ") + str(self.cube) + "}"
 
-
-class PDR(object):
-    @staticmethod
-    def prime(variables):
-        return [Bool(var.__str__() + '\'') for var in variables]
+class PDR(object):    
     def __init__(self, variables, primes, init, trans, post):
         self.variables = variables
         self.variable_dict = {str(v): v for v in self.variables}
         self.primes = primes
         self.vTOp = zip(variables, primes)
-        self.pTOv = zip(primes, variables)
         self.init = init
         self.trans = trans
         self.post = post
@@ -60,11 +64,11 @@ class PDR(object):
             assert(not self.isBlocked(cube))
             solution = self.solveRelative(cube)
             if solution == None:
-                print "Blocking", cube
                 self.stack_trace.pop()
-                self.stack_frames[cube.i] = simplify(And(self.stack_frames[cube.i], Not(cube.cube)))
+                for i in range(1, cube.i + 1):
+                    self.stack_frames[i] = simplify(And(self.stack_frames[i], cube.not_cube))
+
             else:
-                #print "Solution", solution
                 candidate = {v: solution[v] for v in solution if str(v) in self.variable_dict}
                 candidateCube = Cube(candidate, self.variable_dict, cube.i - 1)
                 self.stack_trace.append(candidateCube)
@@ -72,33 +76,22 @@ class PDR(object):
                     return False
         return True
 
-
     def run(self): 
         self.newFrame()
         while True:        
-            cube = self.getBadCube()
+            cube = self.blockCube()
             if cube:
-                if not self.blockCube(cube):
-                    print "UNSAT:", self.stack_trace
-                    return False
+                if not self.conflict(cube):
+                    return False, self.stack_trace
             else:
                 check_frame = self.stack_frames[self.N - 1]
                 s = Solver()
-                print "HERP"
-                print check_frame
-                print substitute(check_frame, self.vTOp)
                 s.add(And(self.trans, check_frame, 
                     Not(substitute(check_frame, self.vTOp))))
                 invariant = s.check() == unsat
                 if invariant:
-                    break
-                print s.model()
-                print "\n".join([str(f) for f in self.stack_frames])
+                    return True, check_frame
                 self.newFrame()
-                raw_input("Continue")
-
-        print "SAT\n" + "\n".join([str(i) + " " + str(f) for i, f in enumerate(self.stack_frames)])
-        return True
 
     @property
     def N(self):
