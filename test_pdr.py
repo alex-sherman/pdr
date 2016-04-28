@@ -19,40 +19,65 @@ def verify_program(title, variables, primes, init, trans, post):
     print
     print
 
-def counter():
+def counter_unsat():
     variables = [BitVec('x', 8)]
+    x = variables[0]
     primes = [BitVec('x\'', 8)]
-    verify_program("Counter example, value remains less than 10", variables, primes, And(x == 0), Or(And(xp == x + 1, x < 64), xp == x), x < 10)
+    xp = primes[0]
+    verify_program("Counter (unsatisfiable)",
+        variables, primes, And(x == 0), Or(And(xp == x + 1, x < 64), xp == x), x != 10)
 
-def add_sub():
-    variables = [BitVec('x', 5), BitVec('y', 5)]
+def counter_sat():
+    variables = [BitVec('x', 5)]
+    x = variables[0]
+    primes = [BitVec('x\'', 5)]
+    xp = primes[0]
+    verify_program("Counter (satisfiable)",
+        variables, primes, And(x == 0), Or(And(xp == x + 1, x < 6), xp == x), x < 7)
+
+def add_sub_unsat():
+    variables = [BitVec('x', 6), BitVec('y', 6)]
     x, y = variables
-    primes = [BitVec('x\'', 5), BitVec('y\'', 5)]
+    primes = [BitVec('x\'', 6), BitVec('y\'', 6)]
     xp, yp = primes
     init = And(x == 4, y == 3)
     trans = And(xp == x + y, yp == x - y)
     post = Not(x == 32)
-    verify_program("Addition and subtraction", variables, primes, init, trans, post)
+    verify_program("Addition and subtraction (unsatisfiable)",
+        variables, primes, init, trans, post)
 
-def shifter():
+def add_sub_sat():
+    variables = [BitVec('x', 3), BitVec('y', 3)]
+    x, y = variables
+    primes = [BitVec('x\'', 3), BitVec('y\'', 3)]
+    xp, yp = primes
+    init = And(x == 4, y == 3)
+    trans = And(xp == x + y, yp == x - y)
+    post = Not(x == 2)
+    verify_program("Addition and subtraction (satisfiable)",
+        variables, primes, init, trans, post)
+
+def shifter_sat():
     variables = generate_variables(4)
     primes = prime(variables)
     init = And(*[var == False for var in variables[1:]])
     trans = And(*[primes[i] == variables[i - 1] for i in range(len(variables))])
     post = variables[-1] == False
-    verify_program("Shifter, maintain MSB False", variables, primes, init, trans, post)
+    verify_program("Shifter (unsatisfiable), maintain MSB False",
+        variables, primes, init, trans, post)
 
-def shifter_any_true():
+def shifter_unsat():
     variables = generate_variables(4)
     primes = prime(variables)
     init = variables[0] == True
     trans = And(*[primes[i] == variables[i - 1] for i in range(len(variables))])
     post = Or(*[var for var in variables])
-    verify_program("Shifter, maintain at least one bit True", variables, primes, init, trans, post)
+    verify_program("Shifter (satisfiable), maintain at least one bit True",
+        variables, primes, init, trans, post)
 
 def run_all():
     [test() for test in tests[1:]]
-tests = [run_all, counter, shifter, shifter_any_true, add_sub]
+tests = [run_all, counter_sat, counter_unsat, shifter_sat, shifter_unsat, add_sub_sat, add_sub_unsat]
 if __name__ == "__main__":
     test_lookup = {test.__name__: test for test in tests}
     if len(sys.argv) != 2:
