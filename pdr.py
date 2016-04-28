@@ -4,7 +4,7 @@ from z3 import *
 #in which it is reachable.
 class Cube(object):
     def __init__(self, model, variable_lookup, i = None):
-        self.values = [simplify(variable_lookup[str(v)] == model[v]) for v in model]
+        self.values = [simplify(variable_lookup[str(v)] == model[v]) for v in model if str(v) in variable_lookup]
         self.i = i
 
     @property
@@ -84,33 +84,31 @@ class PDR(object):
         return None
 
     #Attemps to block a cube recursively
-    #Returns True if the cube was able to be blocked
-    #Returns False if the cube cannot be blocked,
-    #as in there is a stack trace starting from frame 0 reaching the cube
-    def blockCube(self, tcube):
-        self.stack_trace.append(tcube)
-
-        while len(self.stack_trace) > 0:
-            cube = self.stack_trace[-1]
+    #Returns None if the cube was able to be blocked
+    #Returns a stack trace if the cube cannot be blocked
+    def blockCube(self, cube):
+        #If solution is for frame 0, we have found a stack trace reaching ~post
+        if cube.i == 0:
+            return [cube]
+        while True:
             assert(not self.isBlocked(cube.cube, cube.i))
             solution = self.solveRelative(cube)
             #The cube is found to be unreachable by the previous frame
             if solution == None:
-                self.stack_trace.pop()
                 #Block it in the frame it is found in and all previous frames
                 for i in range(1, cube.i + 1):
                     if not self.isBlocked(cube.cube, i):
                         self.stack_frames[i].add_cube(simplify(cube.not_cube))
+                return None
             #The cube is found to be reachable by the previous frame
             else:
                 candidate = {v: solution[v] for v in solution if str(v) in self.variable_dict}
                 candidateCube = Cube(candidate, self.variable_dict, cube.i - 1)
                 #Attempt to block this new candidate as well
-                self.stack_trace.append(candidateCube)
-                #If solution is for frame 0, we have found a stack trace reaching ~post
-                if candidateCube.i == 0:
-                    return False
-        return True
+                trace = self.blockCube(candidateCube)
+                if trace:
+                    return trace + [cube]
+        return None
 
     #Main entry point of PDR
     def run(self):
@@ -119,13 +117,12 @@ class PDR(object):
         while True:
             cube = self.getBadCube()
             if cube:
-                if not self.blockCube(cube):
-                    print
-                    return False, self.stack_trace
+                trace = self.blockCube(cube)
+                if trace != None:
+                    return False, trace
             else:
                 invarient = self.induct()
                 if invarient:
-                    print
                     return True, invarient
                 self.newFrame()
 

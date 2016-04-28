@@ -1,21 +1,31 @@
 from pdr import PDR
 from z3 import *
+import inspect
 
 def generate_variables(N): return [Bool(chr(ord('a') + i)) for i in range(N)]
 def prime(variables): return [Bool(var.__str__() + '\'') for var in variables]
+def print_and_write(file, string):
+    file.write(string + "\n")
+    print string
 
 def verify_program(title, variables, primes, init, trans, post, show_result = True, show_trans = True):
-    print title
-    print "---------------------------------------"
-    print "Init:", init
-    if show_trans:
-        print "Trans:", trans
-    print "Post:", post
-    pdr = PDR(variables, primes, init, trans, post)
-    sat, output = pdr.run()
-    print "SAT\n" if sat else "UNSAT\n", output if show_result else "Hidden result due to length"
-    print
-    print
+    fname = inspect.stack()[1][3]
+    with open(fname + ".out", 'w') as f:
+        print_and_write(f, title)
+        print_and_write(f, "---------------------------------------")
+        print_and_write(f, "Init: " + str(init))
+        f.write("Trans: " + str(trans) + "\n")
+        if show_trans:
+            print "Trans:", trans
+        print_and_write(f, "Post:" + str(post))
+        pdr = PDR(variables, primes, init, trans, post)
+        print
+        sat, output = pdr.run()
+        res_string = ("SAT\n" if sat else "UNSAT\n") + str(output)
+        f.write(res_string + "\n")
+        print res_string if show_result else (("SAT\n" if sat else "UNSAT\n") + "Hidden result due to length")
+        print
+        print
 
 def counter_unsat():
     variables = [BitVec('x', 8)]
