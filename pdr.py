@@ -1,8 +1,10 @@
 from z3 import *
 
+#This helper class specifies a cube and a frame
+#in which it is reachable.
 class Cube(object):
     def __init__(self, model, variable_lookup, i = None):
-        self.values = [variable_lookup[str(v)] == model[v] for v in model]
+        self.values = [simplify(variable_lookup[str(v)] == model[v]) for v in model]
         self.i = i
 
     @property
@@ -14,7 +16,7 @@ class Cube(object):
         return Or(*[Not(value) for value in self.values])
 
     def __repr__(self):
-        return "{" + ("" if self.i == None else str(self.i) + ": ") + str(self.cube) + "}"
+        return "{" + ("" if self.i == None else str(self.i) + ": ") + str(self.values) + "}"
 
 class StackFrame(object):
     def __init__(self, *cubes):
@@ -33,11 +35,11 @@ class PDR(object):
         self.init = init
         self.trans = trans
         self.post = post
-        self.postPrime = substitute(post, self.vTOp)
 
         self.stack_frames = [StackFrame(init)]
         self.stack_trace = []
 
+    #Finds a cube in ~post and the latest frame
     def getBadCube(self):
         s = Solver()
         s.add(And(Not(self.post), self.stack_frames[self.N].expression))
@@ -50,11 +52,15 @@ class PDR(object):
         sys.stdout.flush()
         self.stack_frames.append(StackFrame())
 
+    #Checks whether a cube has been entirely blocked
+    #in the given frame, only for performance
     def isBlocked(self, cube, i):
         s = Solver()
         s.add(And(self.stack_frames[i].expression, cube))
         return s.check() == unsat
 
+    #Tries to find a cube in the previous frame that would
+    #reach the given cube
     def solveRelative(self, cube):
         cubePrime = substitute(cube.cube, self.vTOp)
         s = Solver()
@@ -65,6 +71,7 @@ class PDR(object):
             return None
         return s.model()
 
+    #Checks whether the we have found an inductive invariant
     def induct(self):
         for i, frame in enumerate(self.stack_frames[:-1]):
             check_frame = frame.expression
@@ -73,43 +80,51 @@ class PDR(object):
                 Not(substitute(check_frame, self.vTOp))))
             invariant = s.check() == unsat
             if invariant:
-                return True, check_frame
-        return False, None
+                return check_frame
+        return None
 
+    #Attemps to block a cube recursively
+    #Returns True if the cube was able to be blocked
+    #Returns False if the cube cannot be blocked,
+    #as in there is a stack trace starting from frame 0 reaching the cube
     def blockCube(self, tcube):
         self.stack_trace.append(tcube)
 
         while len(self.stack_trace) > 0:
             cube = self.stack_trace[-1]
-            #print cube, self.stack_frames[cube.i]
             assert(not self.isBlocked(cube.cube, cube.i))
             solution = self.solveRelative(cube)
+            #The cube is found to be unreachable by the previous frame
             if solution == None:
                 self.stack_trace.pop()
+                #Block it in the frame it is found in and all previous frames
                 for i in range(1, cube.i + 1):
                     if not self.isBlocked(cube.cube, i):
                         self.stack_frames[i].add_cube(simplify(cube.not_cube))
-
+            #The cube is found to be reachable by the previous frame
             else:
                 candidate = {v: solution[v] for v in solution if str(v) in self.variable_dict}
                 candidateCube = Cube(candidate, self.variable_dict, cube.i - 1)
+                #Attempt to block this new candidate as well
                 self.stack_trace.append(candidateCube)
+                #If solution is for frame 0, we have found a stack trace reaching ~post
                 if candidateCube.i == 0:
                     return False
         return True
 
+    #Main entry point of PDR
     def run(self):
         print "Current frame",
         self.newFrame()
-        while True:        
+        while True:
             cube = self.getBadCube()
             if cube:
                 if not self.blockCube(cube):
                     print
                     return False, self.stack_trace
             else:
-                inductive, invarient = self.induct()
-                if inductive:
+                invarient = self.induct()
+                if invarient:
                     print
                     return True, invarient
                 self.newFrame()
@@ -117,4 +132,3 @@ class PDR(object):
     @property
     def N(self):
         return len(self.stack_frames) - 1
-    
