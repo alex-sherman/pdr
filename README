@@ -1,0 +1,8 @@
+CS704 Assignment 3: Implementing PDR
+    -Alex Sherman
+
+In order to run all PDR examples run:
+
+python test_pdr.py run_all
+
+Output will be printed to the screen as well as written to files with names corresponding to the test cases.
